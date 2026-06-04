@@ -1,29 +1,23 @@
 name: Job Search Bot 🤖
-
 on:
   schedule:
     - cron: "30 3 * * *"   # هر روز ساعت ۷ صبح ایران (۳:۳۰ UTC)
   workflow_dispatch:         # اجرای دستی از تب Actions
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # رفع اخطار Node.js
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # رفع اخطار Node.js
     steps:
       - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
 
-      # ─── بازیابی کش seen_jobs.txt از اجرای قبلی ──────────────────────────
       - name: 📦 Restore seen jobs cache
         uses: actions/cache@v4
         with:
           path: seen_jobs.txt
-          # کلید منحصربه‌فرد برای هر run — همیشه ذخیره میشه
           key: seen-jobs-${{ github.run_id }}
-          # بازیابی از آخرین کش موجود
           restore-keys: |
             seen-jobs-
 
