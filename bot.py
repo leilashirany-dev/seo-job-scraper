@@ -27,36 +27,53 @@ log = logging.getLogger(__name__)
 RAPIDAPI_KEY       = os.environ["RAPIDAPI_KEY"]
 TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
-GSHEET_CREDENTIALS = os.environ.get("GSHEET_CREDENTIALS", "")   # JSON string
+GSHEET_CREDENTIALS = os.environ.get("GSHEET_CREDENTIALS", "")
 GSHEET_ID          = os.environ.get("GSHEET_ID", "")
 GSHEET_SHEET_NAME  = "Jobs"
 
-SEEN_JOBS_FILE    = Path("seen_jobs.txt")
-MAX_SEEN_JOBS     = 2000   # حداکثر تعداد ID ذخیره شده (جلوگیری از بزرگ شدن فایل)
-MAX_JOBS_PER_RUN  = 15     # حداکثر آگهی ارسالی در هر اجرا
+SEEN_JOBS_FILE   = Path("seen_jobs.txt")
+MAX_SEEN_JOBS    = 2000
+MAX_JOBS_PER_RUN = 15
 
 # ─── کلمات جستجو ──────────────────────────────────────────────────────────────
 SEARCH_QUERIES = [
+    # بین‌المللی — ریموت
     "Junior SEO remote",
     "Technical SEO remote",
     "SEO Content Editor remote",
     "SEO Python remote",
     "WordPress SEO Specialist remote",
-    "سئو",
     "digital marketing specialist remote",
     "social media manager remote",
     "content marketing remote",
-    "پشتیبانی سایت",
-    "دیجیتال مارکتینگ",
 
+    # کانادا
+    "SEO specialist Canada",
+    "digital marketing Canada remote",
+    "content marketing Canada",
+
+    # اروپا
+    "SEO specialist Europe remote",
+    "digital marketing Europe remote",
+    "SEO manager UK remote",
+    "digital marketing Germany remote",
+
+    # ایران
+    "سئو",
+    "دیجیتال مارکتینگ",
+    "پشتیبانی سایت",
 ]
 
 # ─── کلمات ممنوعه (Blacklist) ──────────────────────────────────────────────────
+# فقط آگهی‌هایی که صراحتاً ساکن آمریکا می‌خوان فیلتر میشن
 BLACKLIST_KEYWORDS = [
     "us residents only",
-    "must reside in us",
+    "must reside in the us",
+    "must reside in the united states",
     "must be located in the us",
-    "must be based in",
+    "must be located in the united states",
+    "must be a us citizen",
+    "authorized to work in the us",
     "full stack",
     "fullstack",
 ]
@@ -66,7 +83,6 @@ BLACKLIST_KEYWORDS = [
 # ══════════════════════════════════════════════════════════════════════════════
 
 def load_seen_jobs() -> set:
-    """بارگذاری ID های قبلاً ارسال‌شده از فایل کش"""
     if SEEN_JOBS_FILE.exists():
         ids = set(line.strip() for line in SEEN_JOBS_FILE.read_text().splitlines() if line.strip())
         log.info(f"Loaded {len(ids)} seen job IDs from cache")
@@ -76,10 +92,9 @@ def load_seen_jobs() -> set:
 
 
 def save_seen_jobs(seen: set) -> None:
-    """ذخیره ID ها — با محدودیت MAX_SEEN_JOBS برای جلوگیری از بزرگ شدن فایل"""
     ids_list = list(seen)
     if len(ids_list) > MAX_SEEN_JOBS:
-        ids_list = ids_list[-MAX_SEEN_JOBS:]   # فقط جدیدترین‌ها نگه داشته میشه
+        ids_list = ids_list[-MAX_SEEN_JOBS:]
     SEEN_JOBS_FILE.write_text("\n".join(ids_list))
     log.info(f"Saved {len(ids_list)} job IDs to cache")
 
@@ -89,7 +104,6 @@ def save_seen_jobs(seen: set) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def search_jobs(query: str, retries: int = 3) -> list:
-    """جستجو با retry خودکار و مدیریت rate limit"""
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
         "x-rapidapi-key":  RAPIDAPI_KEY,
@@ -181,12 +195,9 @@ def send_telegram(text: str) -> bool:
 
 
 def extract_salary(job: dict) -> str:
-    """استخراج حقوق از فیلدهای مختلف API"""
-    # اول فیلد آماده رو چک میکنیم
     if job.get("job_salary_string"):
         return job["job_salary_string"]
 
-    # بعد min/max رو بررسی میکنیم
     min_s  = job.get("job_min_salary")
     max_s  = job.get("job_max_salary")
     period = (job.get("job_salary_period") or "").lower()
@@ -202,11 +213,10 @@ def extract_salary(job: dict) -> str:
 
 
 def format_job(job: dict) -> str:
-    """ساخت متن پیام تلگرام با html.escape روی تمام متن‌ها"""
-    title    = html.escape(job.get("job_title")    or "بدون عنوان")
+    title    = html.escape(job.get("job_title")     or "بدون عنوان")
     company  = html.escape(job.get("employer_name") or "نامشخص")
-    city     = html.escape(job.get("job_city")     or "")
-    country  = html.escape(job.get("job_country")  or "")
+    city     = html.escape(job.get("job_city")      or "")
+    country  = html.escape(job.get("job_country")   or "")
     location = f"{city}, {country}".strip(", ") or "Remote"
     source   = html.escape(job.get("job_publisher") or "")
     link     = job.get("job_apply_link") or job.get("job_google_link") or ""
@@ -219,7 +229,7 @@ def format_job(job: dict) -> str:
     ]
 
     if salary:
-        lines.append(f"💰 <b>{html.escape(salary)}</b>")   # برجسته و مجزا
+        lines.append(f"💰 <b>{html.escape(salary)}</b>")
 
     if source:
         lines.append(f"🌐 {source}")
@@ -306,10 +316,10 @@ def main():
     sheets_client = get_sheets_client()
     ensure_sheet_headers(sheets_client)
 
-    new_jobs      = []
-    blacklisted   = 0
-    already_seen  = 0
-    errors        = 0
+    new_jobs     = []
+    blacklisted  = 0
+    already_seen = 0
+    errors       = 0
 
     for query in SEARCH_QUERIES:
         log.info(f"Searching: '{query}'")
@@ -327,7 +337,7 @@ def main():
                         already_seen += 1
                         continue
 
-                    seen_jobs.add(job_id)   # همیشه ثبت میکنیم، حتی blacklisted ها
+                    seen_jobs.add(job_id)
 
                     if is_blacklisted(job):
                         blacklisted += 1
@@ -345,10 +355,10 @@ def main():
             errors += 1
             continue
 
-        time.sleep(1.5)   # احترام به rate limit
+        time.sleep(1.5)
 
-    # حذف تکراری‌ها (یه آگهی ممکنه در چند query باشه)
-    dedup_seen = set()
+    # حذف تکراری‌ها
+    dedup_seen  = set()
     unique_jobs = []
     for job in new_jobs:
         jid = job.get("job_id", "")
@@ -369,7 +379,6 @@ def main():
         save_seen_jobs(seen_jobs)
         return
 
-    # پیام هدر
     send_telegram(
         f"🔍 <b>آگهی‌های شغلی جدید</b>\n"
         f"📅 {now}\n"
@@ -385,7 +394,7 @@ def main():
             if send_telegram(msg):
                 sent += 1
                 append_to_sheet(sheets_client, job)
-            time.sleep(0.8)   # جلوگیری از flood limit تلگرام
+            time.sleep(0.8)
         except Exception as e:
             log.error(f"Error sending job to Telegram: {e}")
             continue
